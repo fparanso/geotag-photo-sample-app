@@ -160,21 +160,28 @@ cp .env.example .env
 ```bash
 npm run dev
 ```
+For testing on physical mobile phones over your local Wi-Fi with full HTTPS camera/GPS support:
+```bash
+npm run dev:https
+```
 
-The application will start on **`http://localhost:3000`** (or `http://0.0.0.0:3000`).
+The application will start on **`http://localhost:3000`** (or **`https://<YOUR_IP>:3000`** in HTTPS mode).
 
 ---
 
 ## 📱 Testing on Mobile Devices (Local Network)
 
-Since camera and geolocation access require secure origins (`https://` or `localhost`), follow these tips when testing on physical mobile phones on your local Wi-Fi:
+Modern mobile browsers (Chrome on Android, Safari on iOS) require a **Secure Context** (`https://` or `localhost`) to enable the live camera stream and hardware GPS:
 
-1. **Vite Host Binding**: The dev server is preconfigured with `--host=0.0.0.0` to expose the port on your local network.
-2. **Access URL**: Open `http://<YOUR_COMPUTER_LOCAL_IP>:3000` on your mobile browser.
-3. **Grant Permissions**:
+1. **Start in HTTPS mode**: Run `npm run dev:https` (or `bun run dev:https`).
+2. **Access URL**: Open `https://<YOUR_COMPUTER_LOCAL_IP>:3000` on your mobile phone browser.
+3. **Accept self-signed certificate**: Accept the local development SSL warning in your mobile browser.
+4. **Grant Permissions**:
    - Allow **Camera** permission when prompted to enable the live viewfinder.
-   - Allow **Location / GPS** permission (with "Precise Location" enabled on iOS/Android).
-4. **Desktop Coordinate Simulation**: If testing on a desktop without GPS, use the **Override / Manual Coordinates** button in the camera viewfinder header to enter test coordinates.
+   - Allow **Location / GPS** permission (with "Precise Location" enabled).
+5. **Fallback Modes**:
+   - If running over standard HTTP, use the **Use Device Camera / Gallery** button (which triggers the native device camera via file capture).
+   - If GPS signal is weak indoors, the app automatically provides a coarse IP location fallback or allows manual coordinate entry via the **Edit** button.
 
 ---
 
@@ -183,6 +190,7 @@ Since camera and geolocation access require secure origins (`https://` or `local
 | Command | Description |
 | :--- | :--- |
 | `npm run dev` | Starts the Vite development server with hot module reloading on port 3000 |
+| `npm run dev:https` | Starts the Vite dev server with local HTTPS (required for mobile camera & GPS over LAN) |
 | `npm run build` | Compiles TypeScript and creates an optimized production bundle in `dist/` |
 | `npm run preview` | Runs a local web server to preview the production build output |
 | `npm run lint` | Runs TypeScript type checking (`tsc --noEmit`) to validate types |

@@ -4,7 +4,7 @@ import { CameraState } from '../types';
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  
+
   const [cameraState, setCameraState] = useState<CameraState>({
     status: 'idle',
     facingMode: 'environment',
@@ -15,7 +15,13 @@ export function useCamera() {
 
   const stopStream = useCallback(() => {
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // ignore
+        }
+      });
       streamRef.current = null;
     }
     if (videoRef.current) {
@@ -23,35 +29,95 @@ export function useCamera() {
     }
   }, []);
 
+  const getMediaDevicesStream = async (constraintsList: MediaStreamConstraints[]): Promise<MediaStream> => {
+    // Standard modern API
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      for (const constraints of constraintsList) {
+        try {
+          return await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (err: unknown) {
+          // If this is the last constraint attempt, rethrow to be caught by outer handler
+          if (constraints === constraintsList[constraintsList.length - 1]) {
+            throw err;
+          }
+          console.warn('Retrying camera with relaxed constraints due to:', err);
+        }
+      }
+    }
+
+    // Legacy getUserMedia fallback for older browsers / webviews
+    const legacyGetUserMedia =
+      (navigator as unknown as { getUserMedia?: (c: MediaStreamConstraints, success: (s: MediaStream) => void, error: (e: unknown) => void) => void }).getUserMedia ||
+      (navigator as unknown as { webkitGetUserMedia?: (c: MediaStreamConstraints, success: (s: MediaStream) => void, error: (e: unknown) => void) => void }).webkitGetUserMedia ||
+      (navigator as unknown as { mozGetUserMedia?: (c: MediaStreamConstraints, success: (s: MediaStream) => void, error: (e: unknown) => void) => void }).mozGetUserMedia ||
+      (navigator as unknown as { msGetUserMedia?: (c: MediaStreamConstraints, success: (s: MediaStream) => void, error: (e: unknown) => void) => void }).msGetUserMedia;
+
+    if (legacyGetUserMedia) {
+      return new Promise<MediaStream>((resolve, reject) => {
+        legacyGetUserMedia.call(navigator, { video: true, audio: false }, resolve, reject);
+      });
+    }
+
+    throw new Error('MEDIA_DEVICES_UNSUPPORTED');
+  };
+
   const startCamera = useCallback(async (facing: 'environment' | 'user' = cameraState.facingMode) => {
     stopStream();
     setCameraState((prev) => ({ ...prev, status: 'starting', errorMessage: null }));
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const isLocalhost =
+      typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1' ||
+        window.location.hostname === '[::1]');
+
+    const isSecure = typeof window !== 'undefined' && (window.isSecureContext || isLocalhost);
+
+    if (!isSecure && !navigator.mediaDevices?.getUserMedia) {
       setCameraState((prev) => ({
         ...prev,
         status: 'error',
-        errorMessage: 'Camera API not supported in this browser. Please use the file upload option.',
+        errorMessage:
+          'Camera access requires a Secure Context (HTTPS or localhost). If testing on a mobile device via LAN IP, please run with HTTPS or use the Device Camera / Gallery button.',
       }));
       return;
     }
 
     try {
-      const constraints: MediaStreamConstraints = {
-        audio: false,
-        video: {
-          facingMode: { ideal: facing },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+      const constraintsList: MediaStreamConstraints[] = [
+        // Preferred high-quality constraint with ideal facing mode
+        {
+          audio: false,
+          video: {
+            facingMode: { ideal: facing },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
         },
-      };
+        // Fallback with exact or simple facing mode
+        {
+          audio: false,
+          video: {
+            facingMode: facing,
+          },
+        },
+        // Basic fallback with any video input
+        {
+          audio: false,
+          video: true,
+        },
+      ];
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await getMediaDevicesStream(constraintsList);
       streamRef.current = stream;
 
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
+        try {
+          await videoRef.current.play();
+        } catch {
+          // Some browsers require user interaction; muted video usually autoplays
+        }
       }
 
       // Check if torch/flash is supported on the active video track
@@ -71,18 +137,22 @@ export function useCamera() {
       });
     } catch (err: unknown) {
       console.warn('Camera access error:', err);
-      let errorMsg = 'Could not access camera.';
+      let errorMsg = 'Could not access camera device.';
       let status: CameraState['status'] = 'error';
 
       if (err instanceof DOMException) {
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          errorMsg = 'Camera permission was denied. You can still upload photos from storage.';
+          errorMsg = 'Camera permission was denied. Please allow camera access in your browser settings or use the File/Native Camera upload option.';
           status = 'denied';
         } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
           errorMsg = 'No camera device found on this system.';
         } else if (err.name === 'NotReadableError') {
-          errorMsg = 'Camera is already in use by another app or system process.';
+          errorMsg = 'Camera is in use by another application or OS process.';
+        } else if (err.name === 'OverconstrainedError') {
+          errorMsg = 'Camera constraints could not be satisfied by available hardware.';
         }
+      } else if (err instanceof Error && err.message === 'MEDIA_DEVICES_UNSUPPORTED') {
+        errorMsg = 'Camera API is not supported in this browser environment. Please use the Device Camera / Gallery upload option.';
       }
 
       setCameraState((prev) => ({
@@ -137,6 +207,24 @@ export function useCamera() {
     return canvas.toDataURL('image/jpeg', 0.92);
   }, [cameraState.status, cameraState.facingMode]);
 
+  // Listen to permission changes if Permissions API is supported
+  useEffect(() => {
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions
+        .query({ name: 'camera' as PermissionName })
+        .then((permissionStatus) => {
+          permissionStatus.onchange = () => {
+            if (permissionStatus.state === 'granted' && cameraState.status !== 'active') {
+              startCamera();
+            }
+          };
+        })
+        .catch(() => {
+          // Camera permission query not supported on some browsers (e.g. Safari)
+        });
+    }
+  }, [cameraState.status, startCamera]);
+
   useEffect(() => {
     return () => {
       stopStream();
@@ -153,3 +241,4 @@ export function useCamera() {
     captureFrame,
   };
 }
+
