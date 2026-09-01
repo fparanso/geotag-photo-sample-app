@@ -1,0 +1,11 @@
+{
+  "name": "GeoPhoto Log",
+  "description": "Offline-first PWA for capturing photos with high-precision GPS coordinates, timestamps, custom notes, and local IndexedDB persistence.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

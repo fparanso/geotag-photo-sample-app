@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/* Leaflet Customizations */
+.leaflet-container {
+  background-color: #e2e8f0 !important;
+  font-family: inherit;
+  touch-action: pan-x pan-y;
+}
+
+.leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.85) !important;
+  color: #94a3b8 !important;
+  font-size: 9px !important;
+  backdrop-filter: blur(8px);
+  border-top-left-radius: 6px;
+  padding: 2px 6px !important;
+}
+
+.leaflet-control-attribution a {
+  color: #38bdf8 !important;
+}
+
+.custom-photo-pin {
+  background: transparent;
+  border: none;
+}
+
+/* Mobile Touch & Tap Optimizations */
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* Hide scrollbars on mobile filter pills and carousels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area padding helper */
+.safe-bottom-padding {
+  padding-bottom: max(env(safe-area-inset-bottom), 16px);
+}
